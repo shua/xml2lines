@@ -1,0 +1,121 @@
+// defines a state machine <sm>
+// sm    : state*
+// state : 'S' '(' name ',' case* ')'
+// case  : 'C' '(' char ',' exec ')'
+//       | 'D' '(' exec ')'
+// char  : "'" <ascii character> "'"
+// name  : <some state name>
+// exec  : <some code to execute>
+
+S(SFREE,
+	C('<',  s=STAG; )
+	C('\n', )
+	D(      push(name, '/'); s=STEXT; push(val, c); ))
+
+S(STEXT,
+	C('<', flush(name, val); pop_until(name, '/'); s=STAG; )
+	C('\n', flush(name, val); )
+	D( push(val, c); ))
+
+S(STAG,
+	C(' ',  )
+	C('/', s=SETAG; )
+	C('!', s=STAG_BANG; )
+	C('?', s=STAG_META; )
+	C('>', err("empty tag"); )
+	D( push(name, '/'); push(name, c); s=STAG_NAME; ))
+S(STAG_NAME,
+	C(' ', s=STAG_; )
+	C('>', s=SFREE; )
+	C('/', s=STAG_SINGLE; )
+	D( push(name, c); ))
+S(STAG_,
+	C(' ',  )
+	C('>', s=SFREE; )
+	C('/', s=STAG_SINGLE; )
+	D( push(name, '/'); push(name, c); s=SATTR_NAME; ))
+S(STAG_SINGLE,
+	C('>', flush(name, val); pop_until(name, '/'); s=SFREE; )
+	D( err("why do you have a \"/\" in the tag?"); ))
+
+S(SATTR_NAME,
+	C('=', s=SATTR_VALUE; )
+	C(' ', flush(name, val); pop_until(name, '/'); s=STAG_; )
+	D( push(name, c); ))
+S(SATTR_VALUE,
+	C('"', s=SATTR_VALUE_; )
+	D( err("attribute values must be enclosed in quotes"); ))
+S(SATTR_VALUE_,
+	C('\\', s=SATTR_VALUE_ESC; )
+	C('"', flush(name, val); pop_until(name, '/'); s=STAG_; )
+	D( push(val, c); ))
+S(SATTR_VALUE_ESC,
+	D( push(val, '\\'); push(val, c); s=SATTR_VALUE; ))
+
+S(SETAG,
+	C('>',
+		if (!etagexpected(name, etag)) {
+			err("end tag doesn't match current tag");
+		}
+		pop_until(name, '/');
+		clear(etag);
+		s=SFREE;
+	)
+	D( push(etag, c); ))
+
+S(STAG_BANG,
+	C('-', s=STAG_COMMENT_; )
+	C('[', s=STAG_CDATA; )
+	D( err("invalid tag name"); ))
+S(STAG_COMMENT_,
+	C('-', s=STAG_COMMENT__; )
+	D( err("invalid tag name"); ))
+S(STAG_COMMENT__,
+	C('-', s=STAG_COMMENT_END; )
+	D( ))
+S(STAG_COMMENT_END,
+	C('-', s=STAG_COMMENT_END_; )
+	D( s=STAG_COMMENT__; ))
+S(STAG_COMMENT_END_,
+	C('>', s=SFREE; )
+	C('-', )
+	D( s=STAG_COMMENT__; ))
+
+S(STAG_CDATA,
+	C('C', s=STAG_CDATA_1; )
+	D( err("invalid bang tag"); ))
+S(STAG_CDATA_1,
+	C('D', s=STAG_CDATA_2; )
+	D( err("invalid bang tag"); ))
+S(STAG_CDATA_2,
+	C('A', s=STAG_CDATA_3; )
+	D( err("invalid bang tag"); ))
+S(STAG_CDATA_3,
+	C('T', s=STAG_CDATA_4; )
+	D( err("invalid bang tag"); ))
+S(STAG_CDATA_4,
+	C('A', s=STAG_CDATA_5; )
+	D( err("invalid bang tag"); ))
+S(STAG_CDATA_5,
+	C('[', push(name, '/'); s=STAG_CDATA_; )
+	D( err("invalid bang tag"); ))
+S(STAG_CDATA_,
+	C(']', s=STAG_CDATA_END; )
+	C('\n', flush(name, val); )
+	D( push(val, c); ))
+S(STAG_CDATA_END,
+	C(']', s=STAG_CDATA_END_; )
+	D( push(val, ']');  push(val, c); s=STAG_CDATA_; ))
+S(STAG_CDATA_END_,
+	C('>', flush(name, val); pop_until(name, '/'); s=SFREE; )
+	C(']', push(val, ']'); )
+	D( push(val, ']'); push(val, ']'); push(val, c); s=STAG_CDATA_; ))
+
+S(STAG_META,
+	C('?', s=STAG_META_END; )
+	C('>', err("meta tag needs to end with \"?>\" not just \">\""); s=SFREE; )
+	D( ))
+S(STAG_META_END,
+	C('>', s=SFREE; )
+	D( s=STAG_META; ))
+
