@@ -98,8 +98,8 @@ main(int argc, char* argv[]) {
 #define err(msg) fprintf(stderr, "ERR:%d:%d %s\n", line, col, msg)
 
 #define S(x, ...) case x: dbgS(x, c); switch(c) { __VA_ARGS__ } break;
-#define C(c, ...) case c: { __VA_ARGS__ } break;
-#define D(...) default: { __VA_ARGS__ } break;
+#define C(c, n, ...) case c: { s=n;  __VA_ARGS__ } break;
+#define D(n, ...) default: { s=n; __VA_ARGS__ } break;
 
 #include "xml2.sm"
 
